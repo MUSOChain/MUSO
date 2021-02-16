@@ -1,0 +1,15 @@
+[Unit]
+Description=MUSO Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/MUSO/bin/MUSO --net --silent --conf /etc/opt/MUSO/MUSO.cfg
+Restart=on-failure
+User=MUSO
+Group=MUSO
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

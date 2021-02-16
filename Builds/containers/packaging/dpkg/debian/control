@@ -1,0 +1,21 @@
+Source: MUSO
+Section: misc
+Priority: extra
+Maintainer: MUSO Labs Inc. <support@MUSO.com>
+Build-Depends: cmake, debhelper (>=9), zlib1g-dev, dh-systemd, ninja-build
+Standards-Version: 3.9.7
+Homepage: http://MUSO.com/
+
+Package: MUSO
+Architecture: any
+Multi-Arch: foreign
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: MUSO daemon
+
+Package: MUSO-dev
+Section: devel
+Recommends: MUSO (= ${binary:Version})
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends}, ${shlibs:Depends}, libprotobuf-dev, libssl-dev
+Description: development files for applications using MUSOl core library (serialize + sign)

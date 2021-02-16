@@ -1,0 +1,158 @@
+//------------------------------------------------------------------------------
+/*
+    This file is part of MUSO: https://github.com/MUSO/MUSO
+    Copyright (c) 2012-2014 MUSO Labs Inc.
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose  with  or without fee is hereby granted, provided that the above
+    copyright notice and this permission notice appear in all copies.
+
+    THE  SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+    WITH  REGARD  TO  THIS  SOFTWARE  INCLUDING  ALL  IMPLIED  WARRANTIES  OF
+    MERCHANTABILITY  AND  FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+    ANY  SPECIAL ,  DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER  RESULTING  FROM  LOSS  OF USE, DATA OR PROFITS, WHETHER IN AN
+    ACTION  OF  CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*/
+//==============================================================================
+
+#include <MUSO/app/ledger/InboundLedgers.h>
+#include <MUSO/app/ledger/LedgerMaster.h>
+#include <MUSO/app/ledger/LedgerToJson.h>
+#include <MUSO/app/main/Application.h>
+#include <MUSO/net/RPCErr.h>
+#include <MUSO/protocol/ErrorCodes.h>
+#include <MUSO/protocol/jss.h>
+#include <MUSO/resource/Fees.h>
+#include <MUSO/rpc/Context.h>
+#include <MUSO/rpc/impl/Tuning.h>
+
+namespace MUSO {
+
+// {
+//   ledger_hash : <ledger>
+//   ledger_index : <ledger_index>
+// }
+Json::Value
+doLedgerRequest(RPC::JsonContext& context)
+{
+    if (context.app.config().reporting())
+        return rpcError(rpcREPORTING_UNSUPPORTED);
+
+    auto const hasHash = context.params.isMember(jss::ledger_hash);
+    auto const hasIndex = context.params.isMember(jss::ledger_index);
+    std::uint32_t ledgerIndex = 0;
+
+    auto& ledgerMaster = context.app.getLedgerMaster();
+    LedgerHash ledgerHash;
+
+    if ((hasHash && hasIndex) || !(hasHash || hasIndex))
+    {
+        return RPC::make_param_error(
+            "Exactly one of ledger_hash and ledger_index can be set.");
+    }
+
+    context.loadType = Resource::feeHighBurdenRPC;
+
+    if (hasHash)
+    {
+        auto const& jsonHash = context.params[jss::ledger_hash];
+        if (!jsonHash.isString() || !ledgerHash.parseHex(jsonHash.asString()))
+            return RPC::invalid_field_error(jss::ledger_hash);
+    }
+    else
+    {
+        auto const& jsonIndex = context.params[jss::ledger_index];
+        if (!jsonIndex.isInt())
+            return RPC::invalid_field_error(jss::ledger_index);
+
+        // We need a validated ledger to get the hash from the sequence
+        if (ledgerMaster.getValidatedLedgerAge() >
+            RPC::Tuning::maxValidatedLedgerAge)
+        {
+            if (context.apiVersion == 1)
+                return rpcError(rpcNO_CURRENT);
+            return rpcError(rpcNOT_SYNCED);
+        }
+
+        ledgerIndex = jsonIndex.asInt();
+        auto ledger = ledgerMaster.getValidatedLedger();
+
+        if (ledgerIndex >= ledger->info().seq)
+            return RPC::make_param_error("Ledger index too large");
+        if (ledgerIndex <= 0)
+            return RPC::make_param_error("Ledger index too small");
+
+        auto const j = context.app.journal("RPCHandler");
+        // Try to get the hash of the desired ledger from the validated ledger
+        auto neededHash = hashOfSeq(*ledger, ledgerIndex, j);
+        if (!neededHash)
+        {
+            // Find a ledger more likely to have the hash of the desired ledger
+            auto const refIndex = getCandidateLedger(ledgerIndex);
+            auto refHash = hashOfSeq(*ledger, refIndex, j);
+            assert(refHash);
+
+            ledger = ledgerMaster.getLedgerByHash(*refHash);
+            if (!ledger)
+            {
+                // We don't have the ledger we need to figure out which ledger
+                // they want. Try to get it.
+
+                if (auto il = context.app.getInboundLedgers().acquire(
+                        *refHash, refIndex, InboundLedger::Reason::GENERIC))
+                {
+                    Json::Value jvResult = RPC::make_error(
+                        rpcLGR_NOT_FOUND,
+                        "acquiring ledger containing requested index");
+                    jvResult[jss::acquiring] =
+                        getJson(LedgerFill(*il, &context));
+                    return jvResult;
+                }
+
+                if (auto il = context.app.getInboundLedgers().find(*refHash))
+                {
+                    Json::Value jvResult = RPC::make_error(
+                        rpcLGR_NOT_FOUND,
+                        "acquiring ledger containing requested index");
+                    jvResult[jss::acquiring] = il->getJson(0);
+                    return jvResult;
+                }
+
+                // Likely the app is shutting down
+                return Json::Value();
+            }
+
+            neededHash = hashOfSeq(*ledger, ledgerIndex, j);
+        }
+        assert(neededHash);
+        ledgerHash = neededHash ? *neededHash : beast::zero;  // kludge
+    }
+
+    // Try to get the desired ledger
+    // Verify all nodes even if we think we have it
+    auto ledger = context.app.getInboundLedgers().acquire(
+        ledgerHash, ledgerIndex, InboundLedger::Reason::GENERIC);
+
+    // In standalone mode, accept the ledger from the ledger cache
+    if (!ledger && context.app.config().standalone())
+        ledger = ledgerMaster.getLedgerByHash(ledgerHash);
+
+    if (ledger)
+    {
+        // We already had the entire ledger verified/acquired
+        Json::Value jvResult;
+        jvResult[jss::ledger_index] = ledger->info().seq;
+        addJson(jvResult, {*ledger, &context, 0});
+        return jvResult;
+    }
+
+    if (auto il = context.app.getInboundLedgers().find(ledgerHash))
+        return il->getJson(0);
+
+    return RPC::make_error(
+        rpcNOT_READY, "findCreate failed to return an inbound ledger");
+}
+
+}  // namespace MUSO

@@ -1,0 +1,3 @@
+/var/log/MUSO/
+/var/lib/MUSO/
+/etc/systemd/system/MUSO.service.d/

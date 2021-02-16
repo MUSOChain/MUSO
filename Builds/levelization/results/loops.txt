@@ -1,0 +1,54 @@
+Loop: MUSO.app MUSO.core
+  MUSO.app > MUSO.core
+
+Loop: MUSO.app MUSO.ledger
+  MUSO.app > MUSO.ledger
+
+Loop: MUSO.app MUSO.net
+  MUSO.app > MUSO.net
+
+Loop: MUSO.app MUSO.nodestore
+  MUSO.app > MUSO.nodestore
+
+Loop: MUSO.app MUSO.overlay
+  MUSO.overlay ~= MUSO.app
+
+Loop: MUSO.app MUSO.rpc
+  MUSO.rpc > MUSO.app
+
+Loop: MUSO.app MUSO.shamap
+  MUSO.app > MUSO.shamap
+
+Loop: MUSO.basics MUSO.core
+  MUSO.core > MUSO.basics
+
+Loop: MUSO.basics MUSO.json
+  MUSO.json ~= MUSO.basics
+
+Loop: MUSO.basics MUSO.protocol
+  MUSO.protocol > MUSO.basics
+
+Loop: MUSO.basics MUSO.rpc
+  MUSO.rpc > MUSO.basics
+
+Loop: MUSO.core MUSO.net
+  MUSO.net > MUSO.core
+
+Loop: MUSO.crypto MUSO.protocol
+  MUSO.protocol > MUSO.crypto
+
+Loop: MUSO.net MUSO.rpc
+  MUSO.rpc > MUSO.net
+
+Loop: MUSO.nodestore MUSO.overlay
+  MUSO.overlay == MUSO.nodestore
+
+Loop: MUSO.overlay MUSO.rpc
+  MUSO.rpc ~= MUSO.overlay
+
+Loop: test.jtx test.toplevel
+  test.toplevel > test.jtx
+
+Loop: test.jtx test.unit_test
+  test.unit_test == test.jtx
+

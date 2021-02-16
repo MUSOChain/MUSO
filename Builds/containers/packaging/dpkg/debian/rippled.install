@@ -1,0 +1,8 @@
+opt/MUSO/bin/MUSO
+opt/MUSO/bin/validator-keys
+opt/MUSO/bin/update-MUSO.sh
+opt/MUSO/bin/getMUSOInfo
+opt/MUSO/etc/MUSO.cfg
+opt/MUSO/etc/validators.txt
+opt/MUSO/etc/update-MUSO-cron
+etc/logrotate.d/MUSO

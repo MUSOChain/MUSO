@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: MUSO Documentation
+    url: https://MUSOl.org/
+    about: All things about MUSOL
+  - name: General question for the community
+    url: https://forum.xpring.io/c/community/
+    about: Please ask and answer questions here.
+  - name: Security bug bounty program
+    url: https://MUSO.com/bug-bounty/
+    about: Please report security-relevant bugs in our software here.

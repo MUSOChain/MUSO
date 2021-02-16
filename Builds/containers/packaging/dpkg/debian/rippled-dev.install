@@ -1,0 +1,3 @@
+opt/MUSO/include
+opt/MUSO/lib/*.a
+opt/MUSO/lib/cmake/MUSO

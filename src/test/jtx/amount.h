@@ -1,0 +1,405 @@
+//------------------------------------------------------------------------------
+/*
+  This file is part of MUSO: https://github.com/MUSO/MUSO
+  Copyright (c) 2012-2015 MUSO Labs Inc.
+
+  Permission to use, copy, modify, and/or distribute this software for any
+  purpose  with  or without fee is hereby granted, provided that the above
+  copyright notice and this permission notice appear in all copies.
+
+  THE  SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+  WITH  REGARD  TO  THIS  SOFTWARE  INCLUDING  ALL  IMPLIED  WARRANTIES  OF
+  MERCHANTABILITY  AND  FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+  ANY  SPECIAL ,  DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER  RESULTING  FROM  LOSS  OF USE, DATA OR PROFITS, WHETHER IN AN
+  ACTION  OF  CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*/
+//==============================================================================
+
+#ifndef MUSO_TEST_JTX_AMOUNT_H_INCLUDED
+#define MUSO_TEST_JTX_AMOUNT_H_INCLUDED
+
+#include <MUSO/basics/FeeUnits.h>
+#include <MUSO/basics/contract.h>
+#include <MUSO/protocol/Issue.h>
+#include <MUSO/protocol/STAmount.h>
+#include <cstdint>
+#include <ostream>
+#include <string>
+#include <test/jtx/Account.h>
+#include <test/jtx/amount.h>
+#include <test/jtx/tags.h>
+#include <type_traits>
+
+namespace MUSO {
+namespace test {
+namespace jtx {
+
+/*
+
+The decision was made to accept amounts of drops and MUSO
+using an int type, since the range of MUSO is 100 billion
+and having both signed and unsigned overloads creates
+tricky code leading to overload resolution ambiguities.
+
+*/
+
+struct AnyAmount;
+
+// Represents "no amount" of a currency
+// This is distinct from zero or a balance.
+// For example, no USD means the trust line
+// doesn't even exist. Using this in an
+// inappropriate context will generate a
+// compile error.
+//
+struct None
+{
+    Issue issue;
+};
+
+//------------------------------------------------------------------------------
+
+// This value is also defined in SystemParameters.h. It's
+// duplicated here to catch any possible future errors that
+// could change that value (however unlikely).
+constexpr MUSOAmount dropsPerMUSO{1'000'000};
+
+/** Represents an MUSO or IOU quantity
+    This customizes the string conversion and supports
+    MUSO conversions from integer and floating point.
+*/
+struct PrettyAmount
+{
+private:
+    // VFALCO TODO should be Amount
+    STAmount amount_;
+    std::string name_;
+
+public:
+    PrettyAmount() = default;
+    PrettyAmount(PrettyAmount const&) = default;
+    PrettyAmount&
+    operator=(PrettyAmount const&) = default;
+
+    PrettyAmount(STAmount const& amount, std::string const& name)
+        : amount_(amount), name_(name)
+    {
+    }
+
+    /** drops */
+    template <class T>
+    PrettyAmount(
+        T v,
+        std::enable_if_t<
+            sizeof(T) >= sizeof(int) && std::is_integral_v<T> &&
+            std::is_signed_v<T>>* = nullptr)
+        : amount_((v > 0) ? v : -v, v < 0)
+    {
+    }
+
+    /** drops */
+    template <class T>
+    PrettyAmount(
+        T v,
+        std::enable_if_t<sizeof(T) >= sizeof(int) && std::is_unsigned_v<T>>* =
+            nullptr)
+        : amount_(v)
+    {
+    }
+
+    /** drops */
+    PrettyAmount(MUSOAmount v) : amount_(v)
+    {
+    }
+
+    std::string const&
+    name() const
+    {
+        return name_;
+    }
+
+    STAmount const&
+    value() const
+    {
+        return amount_;
+    }
+
+    operator STAmount const &() const
+    {
+        return amount_;
+    }
+
+    operator AnyAmount() const;
+};
+
+inline bool
+operator==(PrettyAmount const& lhs, PrettyAmount const& rhs)
+{
+    return lhs.value() == rhs.value();
+}
+
+inline bool
+operator!=(PrettyAmount const& lhs, PrettyAmount const& rhs)
+{
+    return !operator==(lhs, rhs);
+}
+
+std::ostream&
+operator<<(std::ostream& os, PrettyAmount const& amount);
+
+//------------------------------------------------------------------------------
+
+// Specifies an order book
+struct BookSpec
+{
+    AccountID account;
+    MUSO::Currency currency;
+
+    BookSpec(AccountID const& account_, MUSO::Currency const& currency_)
+        : account(account_), currency(currency_)
+    {
+    }
+};
+
+//------------------------------------------------------------------------------
+
+struct MUSO_t
+{
+    /** Implicit conversion to Issue.
+
+        This allows passing MUSO where
+        an Issue is expected.
+    */
+    operator Issue() const
+    {
+        return MUSOIssue();
+    }
+
+    /** Returns an amount of MUSO as PrettyAmount,
+        which is trivially convertable to STAmount
+
+        @param v The number of MUSO (not drops)
+    */
+    /** @{ */
+    template <class T, class = std::enable_if_t<std::is_integral_v<T>>>
+    PrettyAmount
+    operator()(T v) const
+    {
+        using TOut = std::
+            conditional_t<std::is_signed_v<T>, std::int64_t, std::uint64_t>;
+        return {TOut{v} * dropsPerMUSO};
+    }
+
+    PrettyAmount
+    operator()(double v) const
+    {
+        auto const c = dropsPerMUSO.drops();
+        if (v >= 0)
+        {
+            auto const d = std::uint64_t(std::round(v * c));
+            if (double(d) / c != v)
+                Throw<std::domain_error>("unrepresentable");
+            return {d};
+        }
+        auto const d = std::int64_t(std::round(v * c));
+        if (double(d) / c != v)
+            Throw<std::domain_error>("unrepresentable");
+        return {d};
+    }
+    /** @} */
+
+    /** Returns None-of-MUSO */
+    None operator()(none_t) const
+    {
+        return {MUSOIssue()};
+    }
+
+    friend BookSpec
+    operator~(MUSO_t const&)
+    {
+        return BookSpec(MUSOAccount(), MUSOCurrency());
+    }
+};
+
+/** Converts to MUSO Issue or STAmount.
+
+    Examples:
+        MUSO         Converts to the MUSO Issue
+        MUSO(10)     Returns STAmount of 10 MUSO
+*/
+extern MUSO_t const MUSO;
+
+/** Returns an MUSO PrettyAmount, which is trivially convertible to STAmount.
+
+    Example:
+        drops(10)   Returns PrettyAmount of 10 drops
+*/
+template <class Integer, class = std::enable_if_t<std::is_integral_v<Integer>>>
+PrettyAmount
+drops(Integer i)
+{
+    return {i};
+}
+
+/** Returns an MUSO PrettyAmount, which is trivially convertible to STAmount.
+
+Example:
+drops(view->fee().basefee)   Returns PrettyAmount of 10 drops
+*/
+inline PrettyAmount
+drops(MUSOAmount i)
+{
+    return {i};
+}
+
+//------------------------------------------------------------------------------
+
+namespace detail {
+
+struct epsilon_multiple
+{
+    std::size_t n;
+};
+
+}  // namespace detail
+
+// The smallest possible IOU STAmount
+struct epsilon_t
+{
+    epsilon_t()
+    {
+    }
+
+    detail::epsilon_multiple
+    operator()(std::size_t n) const
+    {
+        return {n};
+    }
+};
+
+static epsilon_t const epsilon;
+
+/** Converts to IOU Issue or STAmount.
+
+    Examples:
+        IOU         Converts to the underlying Issue
+        IOU(10)     Returns STAmount of 10 of
+                        the underlying Issue.
+*/
+class IOU
+{
+public:
+    Account account;
+    MUSO::Currency currency;
+
+    IOU(Account const& account_, MUSO::Currency const& currency_)
+        : account(account_), currency(currency_)
+    {
+    }
+
+    Issue
+    issue() const
+    {
+        return {currency, account.id()};
+    }
+
+    /** Implicit conversion to Issue.
+
+        This allows passing an IOU
+        value where an Issue is expected.
+    */
+    operator Issue() const
+    {
+        return issue();
+    }
+
+    template <
+        class T,
+        class = std::enable_if_t<
+            sizeof(T) >= sizeof(int) && std::is_arithmetic<T>::value>>
+    PrettyAmount
+    operator()(T v) const
+    {
+        // VFALCO NOTE Should throw if the
+        //             representation of v is not exact.
+        return {amountFromString(issue(), std::to_string(v)), account.name()};
+    }
+
+    PrettyAmount operator()(epsilon_t) const;
+    PrettyAmount operator()(detail::epsilon_multiple) const;
+
+    // VFALCO TODO
+    // STAmount operator()(char const* s) const;
+
+    /** Returns None-of-Issue */
+    None operator()(none_t) const
+    {
+        return {issue()};
+    }
+
+    friend BookSpec
+    operator~(IOU const& iou)
+    {
+        return BookSpec(iou.account.id(), iou.currency);
+    }
+};
+
+std::ostream&
+operator<<(std::ostream& os, IOU const& iou);
+
+//------------------------------------------------------------------------------
+
+struct any_t
+{
+    inline AnyAmount
+    operator()(STAmount const& sta) const;
+};
+
+/** Amount specifier with an option for any issuer. */
+struct AnyAmount
+{
+    bool is_any;
+    STAmount value;
+
+    AnyAmount() = delete;
+    AnyAmount(AnyAmount const&) = default;
+    AnyAmount&
+    operator=(AnyAmount const&) = default;
+
+    AnyAmount(STAmount const& amount) : is_any(false), value(amount)
+    {
+    }
+
+    AnyAmount(STAmount const& amount, any_t const*)
+        : is_any(true), value(amount)
+    {
+    }
+
+    // Reset the issue to a specific account
+    void
+    to(AccountID const& id)
+    {
+        if (!is_any)
+            return;
+        value.setIssuer(id);
+    }
+};
+
+inline AnyAmount
+any_t::operator()(STAmount const& sta) const
+{
+    return AnyAmount(sta, this);
+}
+
+/** Returns an amount representing "any issuer"
+    @note With respect to what the recipient will accept
+*/
+extern any_t const any;
+
+}  // namespace jtx
+}  // namespace test
+}  // namespace MUSO
+
+#endif

@@ -1,0 +1,3 @@
+opt/MUSO/etc/MUSO.cfg
+opt/MUSO/etc/validators.txt
+etc/logrotate.d/MUSO
