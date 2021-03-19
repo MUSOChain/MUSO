@@ -4,7 +4,7 @@ The [MUSO](https://MUSOl.org/) is a decentralized cryptographic ledger powered b
 
 ## MUSO
 
-[MUSO](https://MUSOl.org/MUSO.html) is a public, counterparty-free asset native to the MUSO, and is designed to bridge the many different currencies in use worldwide. MUSO is traded on the open-market and is available for anyone to access. The MUSO was created in 2012 with a finite supply of 100 billion units of MUSO. Its creators gifted 80 billion MUSO to a company, now called [MUSO](https://MUSO.com/), to develop the MUSO and its ecosystem. MUSO uses MUSO to help build the Internet of Value, ushering in a world in which money moves as fast and efficiently as information does today.
+[MUSO](https://MUSOl.org/MUSO.html)is a public, counterparty-free asset native to the MUSO, and is designed to bridge the many different currencies in use worldwide. MUSO is traded on the open-market and is available for anyone to access. MUSO uses MUSO to help build the Internet of Value, ushering in a world in which money moves as fast and efficiently as information does today.
 
 ## MUSO
 
